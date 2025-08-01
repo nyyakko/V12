@@ -362,14 +362,13 @@ Result<void> safe_main(std::span<char const*> arguments)
         return make_error("source {} does not exist.", source);
     }
 
-    std::ifstream stream(source);
+    std::ifstream stream(source, std::ios::binary);
 
-    std::vector<uint8_t> program;
+    stream.seekg(0, std::ios::end);
+    std::vector<uint8_t> program(static_cast<size_t>(stream.tellg()));
+    stream.seekg(0, std::ios::beg);
 
-    for (uint8_t instruction; stream >> instruction;)
-    {
-        program.push_back(instruction);
-    }
+    stream.read(reinterpret_cast<char*>(program.data()), static_cast<int>(program.size()));
 
     Machine machine;
 
