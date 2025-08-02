@@ -16,6 +16,8 @@
 using namespace liberror;
 using namespace libcoro;
 
+static constexpr std::string_view MAGIC = "This is a V12 program";
+
 template <class ... T>
 struct Visitor : T ... { using T::operator()...; };
 
@@ -30,6 +32,32 @@ enum class Instruction
 };
 
 enum class Intrinsic { PRINT, PRINTLN };
+
+enum class Section { ARGUMENT, SCOPE, DATA };
+
+struct [[gnu::packed]] Program
+{
+    char magic[MAGIC.size()] {};
+
+    int32_t address;
+    int32_t dataSegmentStart;
+    int32_t codeSegmentStart;
+    int32_t entryPoint;
+    int32_t size;
+};
+
+struct Constant
+{
+    int data;
+};
+
+struct Relative
+{
+    Section source;
+    int data;
+};
+
+using Value = std::variant<Constant, Relative>;
 
 class Memory
 {
@@ -61,30 +89,6 @@ public:
 private:
     std::vector<uint8_t> memory_;
 };
-
-struct Program
-{
-    int32_t address;
-    int32_t dataSegmentStart;
-    int32_t codeSegmentStart;
-    int32_t entryPoint;
-    int32_t size;
-};
-
-enum class Section { ARGUMENT, SCOPE, DATA };
-
-struct Constant
-{
-    int data;
-};
-
-struct Relative
-{
-    Section source;
-    int data;
-};
-
-using Value = std::variant<Constant, Relative>;
 
 struct Frame
 {
@@ -134,7 +138,6 @@ private:
     Program program_;
 };
 
-
 int32_t bytes_2_int(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
     return static_cast<int>(a << 24 | b << 16 | c << 8  | d << 0);
@@ -147,11 +150,18 @@ int32_t bytes_2_int(std::span<uint8_t> bytes)
 
 Result<void> Machine::load(std::vector<uint8_t> const& program)
 {
+    if (std::string_view(reinterpret_cast<char const*>(program.data()), sizeof(Program::magic)) != MAGIC)
+    {
+        return make_error("Not a valid V12 program");
+    }
+
+    static constexpr auto magic = sizeof(Program::magic);
+
     program_ = {
         .address = static_cast<int32_t>(memory_.get().size()),
-        .dataSegmentStart = bytes_2_int(program.at(0), program.at(1), program.at(2), program.at(3)),
-        .codeSegmentStart = bytes_2_int(program.at(4), program.at(5), program.at(6), program.at(7)),
-        .entryPoint       = bytes_2_int(program.at(8), program.at(9), program.at(10), program.at(11)),
+        .dataSegmentStart = bytes_2_int(program.at(magic + 0), program.at(magic + 1), program.at(magic + 2),  program.at(magic + 3)),
+        .codeSegmentStart = bytes_2_int(program.at(magic + 4), program.at(magic + 5), program.at(magic + 6),  program.at(magic + 7)),
+        .entryPoint       = bytes_2_int(program.at(magic + 8), program.at(magic + 9), program.at(magic + 10), program.at(magic + 11)),
         .size = static_cast<int32_t>(program.size() - (sizeof(Program) - 8))
     };
 
