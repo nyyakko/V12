@@ -22,9 +22,9 @@ The following header must always be present in every program.
 | Address | Name | Value | Type | Bytes |
 | ------- | - | ----- | ---- | ----- |
 | 0x00 | Signature | This is a kubo program | String | 21 |
-| 0x16 | Data Segment Start| [0x16, 0x800000) | Int32 | 4 |
-| 0x1A | Code Segment Start | [0x1A, 0x800000) | Int32 | 4 |
-| 0x1E | Entrypoint | [0x1E, 0x800000) | Int32 | 4 |
+| 0x16 | Data Segment Start| 0x00 <= x < 0x800000 | Int32 | 4 |
+| 0x1A | Code Segment Start | Data Segment Start < x < 0x800000 | Int32 | 4 |
+| 0x1E | Entrypoint | Code Segment Start < x < 0x800000 | Int32 | 4 |
 
 
 ## Sections
