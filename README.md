@@ -16,20 +16,16 @@ python configure.py && python build.py
 
 ## Header
 
-The following header should reside at address 0 of every valid program:
+The following header must always be present in every program.
 
-```c++
-static constexpr std::string_view MAGIC = "This is a kubo program";
 
-struct Header
-{
-    char magic[MAGIC.size()] {};
+| Address | Name | Value | Type | Bytes |
+| ------- | - | ----- | ---- | ----- |
+| 0x00 | Signature | This is a kubo program | String | 21 |
+| 0x16 | Data Segment Start| [0x16, 0x800000) | Int32 | 4 |
+| 0x1A | Code Segment Start | [0x1A, 0x800000) | Int32 | 4 |
+| 0x1E | Entrypoint | [0x1E, 0x800000) | Int32 | 4 |
 
-    int32_t dataSegmentStart;
-    int32_t codeSegmentStart;
-    int32_t entryPoint;
-};
-```
 
 ## Sections
 
