@@ -1,10 +1,8 @@
 # kubo
 
-This is a virtual machine for [xmlang](https://github.com/nyyakko/xmlang).
+Simple virtual machine I made for fun.
 
-<img width="25%" alt="image" src="https://github.com/user-attachments/assets/cef0801b-9311-4159-a657-df1e873be87b" />
-<br/><br/>
-because V8 was not enough.
+<img width="15%" alt="image" src="https://github.com/user-attachments/assets/ae84fc45-b053-4a26-ba7d-d54f92afb0ec" />
 
 # Building
 
