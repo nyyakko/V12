@@ -42,11 +42,11 @@ Where the code resides.
 ## Instruction Set
 
 
-| Instruction | Format | Sideffect |
-|-------------|----------|-----------|
-| PUSHA | Value Section | Pushes Value into Section|
-| PUSHB | \[Section + Offset\] Section | Pushes \[Section + Offset\] into Section|
-| POP | Section | Pops a value from Section |
-| CALLA | Value | Jumps to Value, creates a new frame and starts execution |
-| CALLB | Value | Creates a new frame, and invokes an intrisic operation Value |
-| RET | N/A | Pop the current stack frame and returns to caller |
+| Instruction | Arg1 | Arg2 | Sideffect |
+|-------------|------|------|-----------|
+| PUSHA | Value | Section | Pushes Arg1 into Arg2 |
+| PUSHB | \[Section + Offset\] | Section | Pushes the value present in Arg1 into Arg2 |
+| POP | Section | N/A | Pops a value from the given section |
+| CALLA | Value | N/A | Starts executing the address Arg1 |
+| CALLB | Value | N/A | Invokes an intrisic operation Arg1 |
+| RET | N/A | N/A | Returns to caller |
