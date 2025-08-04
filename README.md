@@ -14,6 +14,18 @@ python configure.py && python build.py
 
 # Manual
 
+## Instruction Set
+
+
+| Instruction | Arg1 | Arg2 | Sideffect |
+|-------------|------|------|-----------|
+| PUSHA | Value | Section | Pushes Arg1 into Arg2 |
+| PUSHB | \[Section + Offset\] | Section | Pushes the value present in Arg1 into Arg2 |
+| POP | Section | N/A | Pops a value from the given section |
+| CALLA | Value | N/A | Starts executing the address Arg1 |
+| CALLB | Value | N/A | Invokes an intrisic operation Arg1 |
+| RET | N/A | N/A | Returns to caller |
+
 ## Header
 
 The following header must always be present in every program.
@@ -25,7 +37,6 @@ The following header must always be present in every program.
 | 0x16 | Data Segment Start| 0x00 <= x < 0x800000 | Int32 | 4 |
 | 0x1A | Code Segment Start | Data Segment Start < x < 0x800000 | Int32 | 4 |
 | 0x1E | Entrypoint | Code Segment Start < x < 0x800000 | Int32 | 4 |
-
 
 ## Sections
 
@@ -39,14 +50,3 @@ Where all static data resides. You must store string literals and constants in h
 
 Where the code resides.
 
-## Instruction Set
-
-
-| Instruction | Arg1 | Arg2 | Sideffect |
-|-------------|------|------|-----------|
-| PUSHA | Value | Section | Pushes Arg1 into Arg2 |
-| PUSHB | \[Section + Offset\] | Section | Pushes the value present in Arg1 into Arg2 |
-| POP | Section | N/A | Pops a value from the given section |
-| CALLA | Value | N/A | Starts executing the address Arg1 |
-| CALLB | Value | N/A | Invokes an intrisic operation Arg1 |
-| RET | N/A | N/A | Returns to caller |
