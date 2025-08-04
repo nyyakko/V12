@@ -14,22 +14,35 @@ python configure.py && python build.py
 
 # Manual
 
-## Instruction Set
+## Instructions
 
+| Code | Name | Arg1 | Arg2 | Description |
+|- | ----------- | ---- | ---- | --------- |
+| 0x00 | PUSHA | Value | Section | Pushes Arg1 into Arg2 |
+| 0x01 | PUSHB | \[Section + Offset\] | Section | Pushes the value present in Arg1 into Arg2 |
+| 0x02 | POP | Section | N/A | Pops a value from the given section |
+| 0x03 | CALLA | Value | N/A | Starts executing the address Arg1 |
+| 0x04 | CALLB | Value | N/A | Invokes an intrisic operation Arg1 |
+| 0x05 | RET | N/A | N/A | Returns to caller |
 
-| Instruction | Arg1 | Arg2 | Sideffect |
-|-------------|------|------|-----------|
-| PUSHA | Value | Section | Pushes Arg1 into Arg2 |
-| PUSHB | \[Section + Offset\] | Section | Pushes the value present in Arg1 into Arg2 |
-| POP | Section | N/A | Pops a value from the given section |
-| CALLA | Value | N/A | Starts executing the address Arg1 |
-| CALLB | Value | N/A | Invokes an intrisic operation Arg1 |
-| RET | N/A | N/A | Returns to caller |
+## Sections
+
+| Code | Name | Description |
+| ------- | ----- | --------- |
+| 0x00 | ARGUMENT | Values that will be passed to another function |
+| 0x01  | SCOPE | Values that resides in the scope of the current function |
+| 0x02  | DATA | Values that resides in the .DATA segment |
+
+## Intrinsics
+
+| Code | Name | Description |
+| ------- | ----- | --------- |
+| 0x00 | PRINT | Prints characters into the stdout |
+| 0x01  | PRINTLN | Prints characters into the stdout with a newline |
 
 ## Header
 
 The following header must always be present in every program.
-
 
 | Address | Name | Value | Type | Bytes |
 | ------- | - | ----- | ---- | ----- |
@@ -38,15 +51,19 @@ The following header must always be present in every program.
 | 0x1A | Code Segment Start | Data Segment Start < x < 0x800000 | Int32 | 4 |
 | 0x1E | Entrypoint | Code Segment Start < x < 0x800000 | Int32 | 4 |
 
-## Sections
+## Example
 
-The following two sections must be always present:
+```
+.DATA
 
-### .DATA
+13 Hello, World!
 
-Where all static data resides. You must store string literals and constants in here.
+.CODE
 
-### .CODE
+ENTRYPOINT
 
-Where the code resides.
-
+PUSHB [.DATA + 0] ARGUMENT
+CALLB println
+POP ARGUMENT
+RET
+```
