@@ -1,12 +1,15 @@
+#include "Assembler.hpp"
+#include "Constructs.hpp"
+#include "MemManip.hpp"
+
+#include <magic_enum/magic_enum.hpp>
 #include <argparse/argparse.hpp>
 #include <libcoro/Generator.hpp>
 #include <libcoro/Task.hpp>
-#include <libenum/Enum.hpp>
 #include <liberror/Result.hpp>
 #include <liberror/Try.hpp>
 
 #include <cassert>
-#include <fstream>
 #include <iostream>
 #include <ranges>
 #include <span>
@@ -18,20 +21,6 @@ using namespace libcoro;
 
 template <class ... T>
 struct Visitor : T ... { using T::operator()...; };
-
-enum class Instruction
-{
-    PUSHA,
-    PUSHB,
-    POP,
-    CALLA,
-    CALLB,
-    RET
-};
-
-enum class Intrinsic { PRINT, PRINTLN };
-
-enum class Section { ARGUMENT, SCOPE, DATA };
 
 static constexpr std::string_view MAGIC = "This is a kubo program";
 
@@ -53,7 +42,7 @@ struct Constant
 
 struct Relative
 {
-    Section source;
+    DataSource source;
     int data;
 };
 
@@ -122,8 +111,8 @@ private:
     Result<void> ret();
     Result<void> call();
     Result<void> call(Intrinsic intrinsic);
-    Result<void> pop(Section source);
-    Result<void> push(Value value, Section destination);
+    Result<void> pop(DataDestination destination);
+    Result<void> push(Value value, DataDestination destination);
 
 private:
     int32_t programCounter_;
@@ -132,17 +121,6 @@ private:
 
     Program program_;
 };
-
-int32_t bytes_2_int(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
-{
-    return static_cast<int>(a << 24 | b << 16 | c << 8  | d << 0);
-}
-
-int32_t bytes_2_int(std::span<uint8_t> bytes)
-{
-    assert(bytes.size() == 4);
-    return bytes_2_int(bytes[0], bytes[1], bytes[2], bytes[3]);
-}
 
 Result<uint8_t> Machine::tick()
 {
@@ -228,18 +206,18 @@ Result<void> Machine::call(Intrinsic intrinsic)
                 [&] (Relative value) {
                     switch (value.source)
                     {
-                    case Section::SCOPE: {
+                    case DataSource::SCOPE: {
                         self(stack_.top().scope.at(size_t(value.data)));
                         break;
                     }
-                    case Section::DATA: {
+                    case DataSource::DATA: {
                         auto offset = program_.address + program_.dataSegmentStart;
                         auto bytes = memory_.fetch(offset + 4, value.data, offset);
                         std::string_view data(reinterpret_cast<char*>(bytes.data()), size_t(offset));
                         fmt::print("{}", data);
                         break;
                     }
-                    case Section::ARGUMENT: assert("UNREACHABLE" && false);
+                    case DataSource::ARGUMENT: assert("UNREACHABLE" && false);
                     }
                 }
             }, value);
@@ -253,11 +231,11 @@ Result<void> Machine::call(Intrinsic intrinsic)
                 [&] (Relative value) {
                     switch (value.source)
                     {
-                    case Section::SCOPE: {
+                    case DataSource::SCOPE: {
                         self(stack_.top().scope.at(size_t(value.data)));
                         break;
                     }
-                    case Section::DATA: {
+                    case DataSource::DATA: {
                         auto offset = program_.address + program_.dataSegmentStart;
                         auto size = bytes_2_int(memory_.fetch(offset, value.data, 4));
                         auto bytes = memory_.fetch(offset + 4, value.data, size);
@@ -265,7 +243,7 @@ Result<void> Machine::call(Intrinsic intrinsic)
                         fmt::println("{}", data);
                         break;
                     }
-                    case Section::ARGUMENT: assert("UNREACHABLE" && false);
+                    case DataSource::ARGUMENT: assert("UNREACHABLE" && false);
                     }
                 }
             }, value);
@@ -277,40 +255,34 @@ Result<void> Machine::call(Intrinsic intrinsic)
     return {};
 }
 
-Result<void> Machine::push(Value value, Section destination)
+Result<void> Machine::push(Value value, DataDestination destination)
 {
     switch (destination)
     {
-    case Section::ARGUMENT: {
+    case DataDestination::ARGUMENT: {
         stack_.top().argument.push_back(value);
         break;
     }
-    case Section::SCOPE: {
+    case DataDestination::SCOPE: {
         stack_.top().scope.push_back(value);
         break;
-    }
-    case Section::DATA: {
-        return make_error("Tried to push to .DATA section");
     }
     }
 
     return {};
 }
 
-Result<void> Machine::pop(Section source)
+Result<void> Machine::pop(DataDestination destination)
 {
-    switch (source)
+    switch (destination)
     {
-    case Section::ARGUMENT: {
+    case DataDestination::ARGUMENT: {
         stack_.top().argument.pop_back();
         break;
     }
-    case Section::SCOPE: {
+    case DataDestination::SCOPE: {
         stack_.top().scope.pop_back();
         break;
-    }
-    case Section::DATA: {
-        return make_error("Tried to pop from .DATA section");
     }
     }
 
@@ -323,29 +295,29 @@ Result<void> Machine::execute()
 
     while (!stack_.empty())
     {
-        switch (Instruction(TRY(tick())))
+        switch (Opcode(TRY(tick())))
         {
-        case Instruction::PUSHA: {
-            TRY(push(Constant { TRY(tick()) }, Section(TRY(tick()))));
+        case Opcode::PUSHA: {
+            TRY(push(Constant(TRY(tick())), DataDestination(TRY(tick()))));
             break;
         }
-        case Instruction::PUSHB: {
-            TRY(push(Relative { Section(TRY(tick())), TRY(tick()) }, Section(TRY(tick()))));
+        case Opcode::PUSHB: {
+            TRY(push(Relative(DataSource(TRY(tick())), TRY(tick())), DataDestination(TRY(tick()))));
             break;
         }
-        case Instruction::POP: {
-            TRY(pop(Section(TRY(tick()))));
+        case Opcode::POP: {
+            TRY(pop(DataDestination(TRY(tick()))));
             break;
         }
-        case Instruction::CALLA: {
+        case Opcode::CALLA: {
             TRY(call());
             break;
         }
-        case Instruction::CALLB: {
+        case Opcode::CALLB: {
             TRY(call(Intrinsic(TRY(tick()))));
             break;
         }
-        case Instruction::RET: {
+        case Opcode::RET: {
             TRY(ret());
             break;
         }
@@ -378,17 +350,9 @@ Result<void> safe_main(std::span<char const*> arguments)
         return make_error("source {} does not exist.", source);
     }
 
-    std::ifstream stream(source, std::ios::binary);
-
-    stream.seekg(0, std::ios::end);
-    std::vector<uint8_t> program(static_cast<size_t>(stream.tellg()));
-    stream.seekg(0, std::ios::beg);
-
-    stream.read(reinterpret_cast<char*>(program.data()), static_cast<int>(program.size()));
-
     Machine machine;
 
-    TRY(machine.load(program));
+    TRY(machine.load(TRY(assemble(source))));
     TRY(machine.execute());
 
     return {};

@@ -23,6 +23,7 @@ function(enable_cppcheck PROJECT)
             --suppress=passedByValue
             --suppress=syntaxError
             --suppress=preprocessorErrorDirective
+            --check-level=exhaustive
             --inconclusive
             --error-exitcode=2
             --std=c++23
