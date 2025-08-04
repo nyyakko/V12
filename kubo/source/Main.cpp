@@ -16,8 +16,6 @@
 using namespace liberror;
 using namespace libcoro;
 
-static constexpr std::string_view MAGIC = "This is a kubo program";
-
 template <class ... T>
 struct Visitor : T ... { using T::operator()...; };
 
@@ -34,6 +32,8 @@ enum class Instruction
 enum class Intrinsic { PRINT, PRINTLN };
 
 enum class Section { ARGUMENT, SCOPE, DATA };
+
+static constexpr std::string_view MAGIC = "This is a kubo program";
 
 struct [[gnu::packed]] Program
 {
@@ -71,24 +71,28 @@ public:
     // cppcheck-suppress [functionStatic, constParameterReference]
     auto& get(this auto& self) { return self.memory_; }
 
-    void push(uint8_t data)
-    {
-        memory_.push_back(data);
-    }
-
-    std::span<uint8_t> fetch(int32_t offset, int32_t index, int32_t sizeInBytes)
-    {
-        return { memory_.data() + offset + index, size_t(sizeInBytes) };
-    }
-
-    uint8_t fetch(int32_t offset, int32_t index)
-    {
-        return fetch(offset, index, 1)[0];
-    }
+    void push(uint8_t data);
+    std::span<uint8_t> fetch(int32_t offset, int32_t index, int32_t sizeInBytes);
+    uint8_t fetch(int32_t offset, int32_t index);
 
 private:
     std::vector<uint8_t> memory_;
 };
+
+void Memory::push(uint8_t data)
+{
+    memory_.push_back(data);
+}
+
+std::span<uint8_t> Memory::fetch(int32_t offset, int32_t index, int32_t sizeInBytes)
+{
+    return { memory_.data() + offset + index, size_t(sizeInBytes) };
+}
+
+uint8_t Memory::fetch(int32_t offset, int32_t index)
+{
+    return fetch(offset, index, 1)[0];
+}
 
 struct Frame
 {
@@ -106,24 +110,15 @@ public:
         , stack_()
         , memory_(8 * 1024 * 1024)
         , program_()
-    {
-    }
+    {}
 
 public:
     Result<void> load(std::vector<uint8_t> const& program);
     Result<void> execute();
 
-    Result<uint8_t> tick()
-    {
-        if (program_.address + programCounter_ > program_.address + program_.size)
-        {
-            return make_error("Tried to advance past program size");
-        }
-
-        return memory_.fetch(program_.address, programCounter_++);
-    }
-
 private:
+    Result<uint8_t> tick();
+
     Result<void> ret();
     Result<void> call();
     Result<void> call(Intrinsic intrinsic);
@@ -141,12 +136,22 @@ private:
 int32_t bytes_2_int(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
     return static_cast<int>(a << 24 | b << 16 | c << 8  | d << 0);
-};
+}
 
 int32_t bytes_2_int(std::span<uint8_t> bytes)
 {
     assert(bytes.size() == 4);
     return bytes_2_int(bytes[0], bytes[1], bytes[2], bytes[3]);
+}
+
+Result<uint8_t> Machine::tick()
+{
+    if (program_.address + programCounter_ > program_.address + program_.size)
+    {
+        return make_error("Tried to advance past program size");
+    }
+
+    return memory_.fetch(program_.address, programCounter_++);
 }
 
 Result<void> Machine::load(std::vector<uint8_t> const& program)
@@ -285,7 +290,7 @@ Result<void> Machine::push(Value value, Section destination)
         break;
     }
     case Section::DATA: {
-        return make_error("ACCESS VIOLATION: Tried to push to .DATA section");
+        return make_error("Tried to push to .DATA section");
     }
     }
 
@@ -305,7 +310,7 @@ Result<void> Machine::pop(Section source)
         break;
     }
     case Section::DATA: {
-        return make_error("ACCESS VIOLATION: Tried to pop from .DATA section");
+        return make_error("Tried to pop from .DATA section");
     }
     }
 
