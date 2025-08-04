@@ -12,7 +12,38 @@ You will need a [C++23 compiler](https://github.com/llvm/llvm-project/releases) 
 python configure.py && python build.py
 ```
 
-# Instruction Reference
+# Manual
+
+## Header
+
+The following header should reside at address 0 of every valid program:
+
+```c++
+static constexpr std::string_view MAGIC = "This is a kubo program";
+
+struct Header
+{
+    char magic[MAGIC.size()] {};
+
+    int32_t dataSegmentStart;
+    int32_t codeSegmentStart;
+    int32_t entryPoint;
+};
+```
+
+## Sections
+
+The following two sections must be always present:
+
+### .DATA
+
+Where all static data resides. You must store string literals and constants in here.
+
+### .CODE
+
+Where the code resides.
+
+## Instruction Set
 
 
 | Instruction | Format | Sideffect |
