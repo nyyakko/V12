@@ -16,7 +16,7 @@
 using namespace liberror;
 using namespace libcoro;
 
-static constexpr std::string_view MAGIC = "This is a V12 program";
+static constexpr std::string_view MAGIC = "This is a kubo program";
 
 template <class ... T>
 struct Visitor : T ... { using T::operator()...; };
@@ -145,6 +145,7 @@ int32_t bytes_2_int(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 
 int32_t bytes_2_int(std::span<uint8_t> bytes)
 {
+    assert(bytes.size() == 4);
     return bytes_2_int(bytes[0], bytes[1], bytes[2], bytes[3]);
 }
 
@@ -152,7 +153,7 @@ Result<void> Machine::load(std::vector<uint8_t> const& program)
 {
     if (std::string_view(reinterpret_cast<char const*>(program.data()), sizeof(Program::magic)) != MAGIC)
     {
-        return make_error("Not a valid V12 program");
+        return make_error("Not a valid kubo program");
     }
 
     static constexpr auto magic = sizeof(Program::magic);
@@ -351,8 +352,8 @@ Result<void> Machine::execute()
 
 Result<void> safe_main(std::span<char const*> arguments)
 {
-    argparse::ArgumentParser args("V12", "", argparse::default_arguments::help);
-    args.add_description("V12 virtual machine");
+    argparse::ArgumentParser args("kubo", "", argparse::default_arguments::help);
+    args.add_description("kubo virtual machine");
 
     args.add_argument("-f", "--file").help("bytecode to be executed").required();
 

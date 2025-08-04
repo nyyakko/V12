@@ -1,4 +1,4 @@
-# V12
+# kubo
 
 This is a virtual machine for [xmlang](https://github.com/nyyakko/xmlang).
 
