@@ -1,7 +1,5 @@
-#include "Assembler.hpp"
-#include "Constructs.hpp"
-#include "MemManip.hpp"
-
+#include <cstdint>
+#include <fmt/core.h>
 #include <magic_enum/magic_enum.hpp>
 #include <argparse/argparse.hpp>
 #include <libcoro/Generator.hpp>
@@ -10,6 +8,7 @@
 #include <liberror/Try.hpp>
 
 #include <cassert>
+#include <fstream>
 #include <iostream>
 #include <ranges>
 #include <span>
@@ -21,6 +20,50 @@ using namespace libcoro;
 
 template <class ... T>
 struct Visitor : T ... { using T::operator()...; };
+
+enum class Opcode
+{
+    CALL,
+    LOAD,
+    POP,
+    PUSH,
+    RET,
+    STORE
+};
+
+enum class CallMode { EXTRINSIC, INTRINSIC };
+
+enum class Intrinsic { PRINT, PRINTLN };
+
+enum class DataSource { DATA_SEGMENT, LOCAL_SCOPE, GLOBAL_SCOPE };
+enum class DataDestination { LOCAL_SCOPE, GLOBAL_SCOPE };
+
+inline int32_t bytes_2_int(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
+{
+    return static_cast<int>(a << 24 | b << 16 | c << 8  | d << 0);
+}
+
+inline int32_t bytes_2_int(std::span<uint8_t> bytes)
+{
+    assert(bytes.size() == 4);
+    return bytes_2_int(bytes[0], bytes[1], bytes[2], bytes[3]);
+}
+
+inline int32_t bytes_2_int(uint8_t* bytes)
+{
+    assert(bytes);
+    return bytes_2_int(bytes[0], bytes[1], bytes[2], bytes[3]);
+}
+
+inline std::array<uint8_t, 4> int_2_bytes(int value)
+{
+    return {
+        static_cast<uint8_t>((value >> 24) & 0xFF),
+        static_cast<uint8_t>((value >> 16) & 0xFF),
+        static_cast<uint8_t>((value >> 8)  & 0xFF),
+        static_cast<uint8_t>((value >> 0)  & 0xFF),
+    };
+}
 
 static constexpr std::string_view MAGIC = "This is a kubo program";
 
@@ -35,18 +78,7 @@ struct [[gnu::packed]] Program
     int32_t size;
 };
 
-struct Constant
-{
-    int data;
-};
-
-struct Relative
-{
-    DataSource source;
-    int data;
-};
-
-using Value = std::variant<Constant, Relative>;
+using Value = std::variant<bool, char, short, float, int, uint8_t*>;
 
 class Memory
 {
@@ -63,6 +95,7 @@ public:
     void push(uint8_t data);
     std::span<uint8_t> fetch(int32_t offset, int32_t index, int32_t sizeInBytes);
     uint8_t fetch(int32_t offset, int32_t index);
+    uint8_t* reference(int32_t offset, int32_t index);
 
 private:
     std::vector<uint8_t> memory_;
@@ -83,12 +116,17 @@ uint8_t Memory::fetch(int32_t offset, int32_t index)
     return fetch(offset, index, 1)[0];
 }
 
+uint8_t* Memory::reference(int32_t offset, int32_t index)
+{
+    return memory_.data() + offset + index;
+}
+
 struct Frame
 {
     int32_t returnAddress;
 
-    std::vector<Value> argument;
-    std::vector<Value> scope;
+    std::stack<Value> operands;
+    std::vector<Value> local;
 };
 
 class Machine
@@ -106,13 +144,14 @@ public:
     Result<void> execute();
 
 private:
-    Result<uint8_t> tick();
+    Result<uint8_t> fetch();
 
+    Result<void> call(CallMode mode);
+    Result<void> load(DataSource source);
+    Result<void> pop();
+    Result<void> push();
     Result<void> ret();
-    Result<void> call();
-    Result<void> call(Intrinsic intrinsic);
-    Result<void> pop(DataDestination destination);
-    Result<void> push(Value value, DataDestination destination);
+    Result<void> store(DataDestination destination);
 
 private:
     int32_t programCounter_;
@@ -122,7 +161,7 @@ private:
     Program program_;
 };
 
-Result<uint8_t> Machine::tick()
+Result<uint8_t> Machine::fetch()
 {
     if (program_.address + programCounter_ > program_.address + program_.size)
     {
@@ -154,134 +193,138 @@ Result<void> Machine::load(std::vector<uint8_t> const& program)
         memory_.push(byte);
     }
 
-    programCounter_ = program_.entryPoint;
+    programCounter_ = program_.codeSegmentStart + program_.entryPoint;
 
+    return {};
+}
+
+Result<void> Machine::call(CallMode mode)
+{
+    switch (mode)
+    {
+    case CallMode::EXTRINSIC: {
+        Frame frame {};
+        frame.returnAddress = programCounter_ + 1;
+
+        while (!(stack_.empty() || stack_.top().operands.empty()))
+        {
+            auto operand = stack_.top().operands.top();
+            frame.local.push_back(operand);
+            stack_.top().operands.pop();
+        }
+
+        stack_.push(std::move(frame));
+
+        programCounter_ = program_.codeSegmentStart + TRY(fetch());
+
+        break;
+    }
+    case CallMode::INTRINSIC: {
+        using sv = std::string_view;
+
+        switch (Intrinsic(TRY(fetch())))
+        {
+        case Intrinsic::PRINT: {
+            break;
+        }
+        case Intrinsic::PRINTLN: {
+            std::visit(Visitor {
+                [&] (auto value) {
+                    fmt::println("{}", value);
+                },
+                [&] (uint8_t* reference) {
+                    fmt::println("{}", sv(reinterpret_cast<char*>(std::next(reference, 4)), size_t(bytes_2_int(reference))));
+                }
+            }, stack_.top().operands.top());
+            break;
+        }
+        }
+        break;
+    }
+    }
+
+    return {};
+}
+
+Result<void> Machine::load(DataSource source)
+{
+    auto offset = bytes_2_int(TRY(fetch()), TRY(fetch()), TRY(fetch()), TRY(fetch()));
+
+    switch (source)
+    {
+    case DataSource::DATA_SEGMENT: {
+        stack_.top().operands.push(memory_.reference(program_.address + program_.dataSegmentStart, offset));
+        break;
+    }
+    case DataSource::LOCAL_SCOPE: {
+        stack_.top().operands.push(stack_.top().local.at(size_t(offset)));
+        break;
+    }
+    case DataSource::GLOBAL_SCOPE: {
+        assert("UNIMPLEMENTED" && false);
+        break;
+    }
+    }
+
+    return {};
+}
+
+Result<void> Machine::pop()
+{
+    if (stack_.top().operands.empty())
+    {
+        return make_error("Operand stack was empty");
+    }
+
+    stack_.top().operands.pop();
+
+    return {};
+}
+
+Result<void> Machine::push()
+{
+    stack_.top().operands.push(bytes_2_int(TRY(fetch()), TRY(fetch()), TRY(fetch()), TRY(fetch())));
     return {};
 }
 
 Result<void> Machine::ret()
 {
+    auto result = std::move(stack_.top().operands.top());
     programCounter_ = stack_.top().returnAddress;
+
     stack_.pop();
-    return {};
-}
 
-Result<void> Machine::call()
-{
-    Frame frame {};
-    frame.returnAddress = programCounter_;
-
-    while (!stack_.top().argument.empty())
+    if (!stack_.empty())
     {
-        auto argument = stack_.top().argument.back();
-        frame.scope.push_back(argument);
-        stack_.top().argument.pop_back();
-    }
-
-    stack_.push(frame);
-
-    programCounter_ = TRY(tick());
-
-    return {};
-
-}
-
-Result<void> Machine::call(Intrinsic intrinsic)
-{
-    std::vector<Value> parameters {};
-
-    while (!stack_.top().argument.empty())
-    {
-        auto argument = stack_.top().argument.back();
-        parameters.push_back(argument);
-        stack_.top().argument.pop_back();
-    }
-
-    switch (intrinsic)
-    {
-    case Intrinsic::PRINT: {
-        [&] (this auto&& self, Value value) -> void {
-            std::visit(Visitor {
-                [&] (Constant value) { fmt::print("{}", value.data); },
-                [&] (Relative value) {
-                    switch (value.source)
-                    {
-                    case DataSource::SCOPE: {
-                        self(stack_.top().scope.at(size_t(value.data)));
-                        break;
-                    }
-                    case DataSource::DATA: {
-                        auto offset = program_.address + program_.dataSegmentStart;
-                        auto bytes = memory_.fetch(offset + 4, value.data, offset);
-                        std::string_view data(reinterpret_cast<char*>(bytes.data()), size_t(offset));
-                        fmt::print("{}", data);
-                        break;
-                    }
-                    case DataSource::ARGUMENT: assert("UNREACHABLE" && false);
-                    }
-                }
-            }, value);
-        }(parameters.at(0));
-        break;
-    }
-    case Intrinsic::PRINTLN: {
-        [&] (this auto&& self, Value value) -> void {
-            std::visit(Visitor {
-                [&] (Constant value) { fmt::println("{}", value.data); },
-                [&] (Relative value) {
-                    switch (value.source)
-                    {
-                    case DataSource::SCOPE: {
-                        self(stack_.top().scope.at(size_t(value.data)));
-                        break;
-                    }
-                    case DataSource::DATA: {
-                        auto offset = program_.address + program_.dataSegmentStart;
-                        auto size = bytes_2_int(memory_.fetch(offset, value.data, 4));
-                        auto bytes = memory_.fetch(offset + 4, value.data, size);
-                        std::string_view data(reinterpret_cast<char*>(bytes.data()), size_t(size));
-                        fmt::println("{}", data);
-                        break;
-                    }
-                    case DataSource::ARGUMENT: assert("UNREACHABLE" && false);
-                    }
-                }
-            }, value);
-        }(parameters.at(0));
-        break;
-    }
+        stack_.top().operands.push(std::move(result));
     }
 
     return {};
 }
 
-Result<void> Machine::push(Value value, DataDestination destination)
+Result<void> Machine::store(DataDestination destination)
 {
+    auto offset = bytes_2_int(TRY(fetch()), TRY(fetch()), TRY(fetch()), TRY(fetch()));
+
+    if (stack_.top().operands.empty())
+    {
+        return make_error("Operand stack was empty");
+    }
+
+    auto value = stack_.top().operands.top();
+    stack_.top().operands.pop();
+
     switch (destination)
     {
-    case DataDestination::ARGUMENT: {
-        stack_.top().argument.push_back(value);
+    case DataDestination::LOCAL_SCOPE: {
+        if (stack_.top().local.empty())
+            stack_.top().local.emplace_back(std::move(value));
+        else
+            stack_.top().local.at(size_t(offset)) = std::move(value);
         break;
     }
-    case DataDestination::SCOPE: {
-        stack_.top().scope.push_back(value);
-        break;
-    }
-    }
-
-    return {};
-}
-
-Result<void> Machine::pop(DataDestination destination)
-{
-    switch (destination)
-    {
-    case DataDestination::ARGUMENT: {
-        stack_.top().argument.pop_back();
-        break;
-    }
-    case DataDestination::SCOPE: {
-        stack_.top().scope.pop_back();
+    case DataDestination::GLOBAL_SCOPE: {
+        assert("UNIMPLEMENTED" && false);
         break;
     }
     }
@@ -291,34 +334,44 @@ Result<void> Machine::pop(DataDestination destination)
 
 Result<void> Machine::execute()
 {
-    stack_.push({});
+    /*
+     * 00000'000
+     * ┬──── ┬──
+     * |     ╰───▶ Instruction Mode
+     * ╰─────────▶ Instruction
+     */
+
+    Frame entry {};
+    stack_.push(entry);
 
     while (!stack_.empty())
     {
-        switch (Opcode(TRY(tick())))
+        auto instruction = TRY(fetch());
+
+        switch (auto mode = (instruction >> 0) & 7; Opcode((instruction >> 3) & 31))
         {
-        case Opcode::PUSHA: {
-            TRY(push(Constant(TRY(tick())), DataDestination(TRY(tick()))));
+        case Opcode::CALL: {
+            TRY(call(CallMode(mode)));
             break;
         }
-        case Opcode::PUSHB: {
-            TRY(push(Relative(DataSource(TRY(tick())), TRY(tick())), DataDestination(TRY(tick()))));
+        case Opcode::LOAD: {
+            TRY(load(DataSource(TRY(fetch()))));
             break;
         }
         case Opcode::POP: {
-            TRY(pop(DataDestination(TRY(tick()))));
+            TRY(pop());
             break;
         }
-        case Opcode::CALLA: {
-            TRY(call());
-            break;
-        }
-        case Opcode::CALLB: {
-            TRY(call(Intrinsic(TRY(tick()))));
+        case Opcode::PUSH: {
+            TRY(push());
             break;
         }
         case Opcode::RET: {
             TRY(ret());
+            break;
+        }
+        case Opcode::STORE: {
+            TRY(store(DataDestination(TRY(fetch()))));
             break;
         }
         }
@@ -350,9 +403,16 @@ Result<void> safe_main(std::span<char const*> arguments)
         return make_error("source {} does not exist.", source);
     }
 
+    std::ifstream stream(source, std::ios::binary);
+
+    stream.seekg(0, std::ios::end);
+    std::vector<uint8_t> program(static_cast<size_t>(stream.tellg()));
+    stream.seekg(0, std::ios::beg);
+    stream.read(reinterpret_cast<char*>(program.data()), static_cast<int>(program.size()));
+
     Machine machine;
 
-    TRY(machine.load(TRY(assemble(source))));
+    TRY(machine.load(program));
     TRY(machine.execute());
 
     return {};
