@@ -1,13 +1,13 @@
-#include <cstdint>
-#include <fmt/core.h>
-#include <magic_enum/magic_enum.hpp>
 #include <argparse/argparse.hpp>
+#include <fmt/core.h>
 #include <libcoro/Generator.hpp>
 #include <libcoro/Task.hpp>
 #include <liberror/Result.hpp>
 #include <liberror/Try.hpp>
+#include <magic_enum/magic_enum.hpp>
 
 #include <cassert>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <ranges>
