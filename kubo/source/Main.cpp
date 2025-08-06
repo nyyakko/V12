@@ -225,6 +225,14 @@ Result<void> Machine::call(CallMode mode)
         switch (Intrinsic(TRY(fetch())))
         {
         case Intrinsic::PRINT: {
+            std::visit(Visitor {
+                [&] (auto value) {
+                    fmt::print("{}", value);
+                },
+                [&] (uint8_t* reference) {
+                    fmt::print("{}", sv(reinterpret_cast<char*>(std::next(reference, 4)), size_t(bytes_2_int(reference))));
+                }
+            }, stack_.top().operands.top());
             break;
         }
         case Intrinsic::PRINTLN: {
