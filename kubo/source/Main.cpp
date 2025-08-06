@@ -226,9 +226,7 @@ Result<void> Machine::call(CallMode mode)
         {
         case Intrinsic::PRINT: {
             std::visit(Visitor {
-                [&] (auto value) {
-                    fmt::print("{}", value);
-                },
+                [&] (auto value) { fmt::print("{}", value); },
                 [&] (uint8_t* reference) {
                     fmt::print("{}", sv(reinterpret_cast<char*>(std::next(reference, 4)), size_t(bytes_2_int(reference))));
                 }
@@ -237,9 +235,7 @@ Result<void> Machine::call(CallMode mode)
         }
         case Intrinsic::PRINTLN: {
             std::visit(Visitor {
-                [&] (auto value) {
-                    fmt::println("{}", value);
-                },
+                [&] (auto value) { fmt::println("{}", value); },
                 [&] (uint8_t* reference) {
                     fmt::println("{}", sv(reinterpret_cast<char*>(std::next(reference, 4)), size_t(bytes_2_int(reference))));
                 }
