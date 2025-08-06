@@ -11,20 +11,3 @@ You will need a [C++23 compiler](https://github.com/llvm/llvm-project/releases) 
 ```bash
 python configure.py && python build.py
 ```
-
-# Example
-
-```
-.DATA
-
-13 Hello, World!
-
-.CODE
-
-ENTRYPOINT
-
-PUSHB [.DATA + 0] ARGUMENT
-CALLB println
-POP ARGUMENT
-RET
-```
